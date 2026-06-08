@@ -70,9 +70,6 @@ export function IssueCard({
             Line {issue.line}
           </Typography>
         )}
-        {((issue.confidence ?? 100) >= 80) && (
-          <Chip label={`${issue.confidence ?? 100}% confidence`} size="small" color="success" variant="outlined" />
-        )}
         {streaming && (
           <Chip label="Streaming…" size="small" color="primary" variant="outlined" />
         )}

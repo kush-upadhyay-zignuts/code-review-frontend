@@ -11,6 +11,7 @@ import Typography from '@mui/material/Typography';
 import { AppShell } from '@/components/app-shell';
 import { MonacoCodeEditor } from '@/components/monaco-code-editor';
 import { IssueCard, ReviewSummaryCard } from '@/components/review-ui';
+import { SplitReviewLayout } from '@/components/split-review-layout';
 import { apiFetch } from '@/lib/api';
 import type { ReviewHistoryItem, SupportedLanguage } from '@/lib/types';
 
@@ -40,8 +41,18 @@ export default function HistoryDetailPage() {
 
   return (
     <AppShell>
-      <Container maxWidth="xl" sx={{ py: 4 }}>
-        <Box sx={{ mb: 4, display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', gap: 2 }}>
+      <Container
+        maxWidth="xl"
+        sx={{
+          py: 4,
+          display: 'flex',
+          flexDirection: 'column',
+          height: { lg: 'calc(100vh - 64px)' },
+          overflow: { lg: 'hidden' },
+          boxSizing: 'border-box',
+        }}
+      >
+        <Box sx={{ mb: 4, flexShrink: 0, display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', gap: 2 }}>
           <Box>
             <Link href="/history" style={{ color: '#60a5fa', fontSize: 14 }}>
               ← Back to history
@@ -56,34 +67,40 @@ export default function HistoryDetailPage() {
           <Chip label={`Score ${review.overallScore}/10`} color="primary" />
         </Box>
 
-        <Box sx={{ display: 'grid', gridTemplateColumns: { lg: '1fr 1fr' }, gap: 3 }}>
-          <Paper elevation={0} sx={{ overflow: 'hidden', p: 0.5 }}>
-            <MonacoCodeEditor
-              value={review.code ?? ''}
-              language={review.language as SupportedLanguage}
-              onChange={() => undefined}
-              readOnly
-            />
-          </Paper>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {review.result && (
-              <ReviewSummaryCard
-                summary={{
-                  overallScore: review.result.overallScore,
-                  summary: review.result.summary,
-                }}
+        <Box sx={{ flex: 1, minHeight: 0 }}>
+        <SplitReviewLayout
+          left={
+            <Paper elevation={0} sx={{ flex: 1, overflow: 'hidden', p: 0.5, minHeight: 0 }}>
+              <MonacoCodeEditor
+                value={review.code ?? ''}
+                language={review.language as SupportedLanguage}
+                onChange={() => undefined}
+                readOnly
               />
-            )}
-            {review.result?.issues.length ? (
-              review.result.issues.map((issue, i) => (
-                <IssueCard key={i} issue={issue} />
-              ))
-            ) : (
-              <Paper elevation={0} sx={{ p: 4, textAlign: 'center' }}>
-                <Typography color="text.secondary">No issues recorded for this review.</Typography>
-              </Paper>
-            )}
-          </Box>
+            </Paper>
+          }
+          right={
+            <>
+              {review.result && (
+                <ReviewSummaryCard
+                  summary={{
+                    overallScore: review.result.overallScore,
+                    summary: review.result.summary,
+                  }}
+                />
+              )}
+              {review.result?.issues.length ? (
+                review.result.issues.map((issue, i) => (
+                  <IssueCard key={i} issue={issue} />
+                ))
+              ) : (
+                <Paper elevation={0} sx={{ p: 4, textAlign: 'center' }}>
+                  <Typography color="text.secondary">No issues recorded for this review.</Typography>
+                </Paper>
+              )}
+            </>
+          }
+        />
         </Box>
       </Container>
     </AppShell>
