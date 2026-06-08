@@ -42,6 +42,17 @@ export interface UserProfile {
   tokenUsage: number;
 }
 
+export interface UserAccountDetails {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: 'user' | 'admin';
+  tokenUsage: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface DashboardStats {
   totalReviews: number;
   totalTokens: number;

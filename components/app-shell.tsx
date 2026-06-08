@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import AppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -10,6 +10,7 @@ import Container from '@mui/material/Container';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import { useAuthStore } from '@/lib/auth-store';
+import { UserAvatarMenu } from '@/components/user-avatar-menu';
 
 const links = [
   { href: '/dashboard', label: 'Dashboard' },
@@ -19,27 +20,12 @@ const links = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const user = useAuthStore((s) => s.user);
-  const clearAuth = useAuthStore((s) => s.clearAuth);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  const displayName =
-    mounted && user?.firstName && user?.lastName
-      ? `${user.firstName} ${user.lastName}`
-      : mounted
-        ? user?.email
-        : '';
-
-  const logout = () => {
-    clearAuth();
-    document.cookie = 'auth-token=; Max-Age=0; path=/';
-    router.push('/login');
-  };
 
   return (
     <Box
@@ -52,7 +38,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     >
       <AppBar position="sticky" elevation={0} sx={{ bgcolor: 'rgba(2,6,23,0.85)', backdropFilter: 'blur(12px)' }}>
         <Container maxWidth="xl">
-          <Toolbar disableGutters sx={{ gap: 2, py: 0.5 }}>
+          <Toolbar disableGutters sx={{ position: 'relative', minHeight: 64, py: 0.5 }}>
             <Link href="/dashboard" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
               <Box
                 sx={{
@@ -75,7 +61,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Typography>
             </Link>
 
-            <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 0.5, flex: 1 }}>
+            <Box
+              sx={{
+                position: 'absolute',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                display: { xs: 'none', md: 'flex' },
+                gap: 0.5,
+              }}
+            >
               {links.map((link) => {
                 const active = pathname.startsWith(link.href);
                 return (
@@ -106,20 +100,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               )}
             </Box>
 
-            <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
-              {mounted && (
-                <Box sx={{ display: { xs: 'none', sm: 'block' }, textAlign: 'right' }}>
-                  <Typography variant="body2" color="text.primary">
-                    {displayName}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {user?.email}
-                  </Typography>
-                </Box>
-              )}
-              <Button variant="outlined" size="small" onClick={logout} sx={{ textTransform: 'none' }}>
-                Sign out
-              </Button>
+            <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center' }}>
+              {mounted && user && <UserAvatarMenu />}
             </Box>
           </Toolbar>
         </Container>

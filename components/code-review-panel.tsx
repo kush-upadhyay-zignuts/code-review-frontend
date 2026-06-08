@@ -23,12 +23,12 @@ import type {
   SupportedLanguage,
   TokenUsage,
 } from '@/lib/types';
+import { SplitReviewLayout } from '@/components/split-review-layout';
 import {
   IssueCard,
   LanguageSelect,
   PhaseProgress,
   ReviewSummaryCard,
-  StreamingTextPanel,
   TokenUsageBar,
 } from '@/components/review-ui';
 
@@ -56,21 +56,41 @@ export function CodeReviewPanel() {
   const [metrics, setMetrics] = useState<ReviewMetrics | null>(null);
   const [tokens, setTokens] = useState<TokenUsage | null>(null);
   const [phases, setPhases] = useState(initialPhases);
-  const [streamText, setStreamText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [validating, setValidating] = useState(false);
   const [issuesStreaming, setIssuesStreaming] = useState(false);
-  const streamRef = useRef<HTMLDivElement>(null);
-  const issuesRef = useRef<HTMLDivElement>(null);
+  const rightPanelRef = useRef<HTMLDivElement>(null);
   const issueQueueRef = useRef<ReviewIssue[]>([]);
   const processingRef = useRef(false);
+  const liveIssueRef = useRef<ReviewIssue | null>(null);
+  const pendingSummaryRef = useRef<ReviewSummary | null>(null);
+  const pendingMetricsRef = useRef<ReviewMetrics | null>(null);
   const completeResolverRef = useRef<(() => void) | null>(null);
   const seenIssueKeysRef = useRef<Set<string>>(new Set());
 
+  const tryFlushPendingResults = useCallback(() => {
+    if (
+      processingRef.current ||
+      issueQueueRef.current.length > 0 ||
+      liveIssueRef.current
+    ) {
+      return;
+    }
+
+    if (pendingSummaryRef.current) {
+      setSummary(pendingSummaryRef.current);
+      pendingSummaryRef.current = null;
+    }
+    if (pendingMetricsRef.current) {
+      setMetrics(pendingMetricsRef.current);
+      pendingMetricsRef.current = null;
+    }
+  }, []);
+
   const scrollIssues = useCallback(() => {
     requestAnimationFrame(() => {
-      issuesRef.current?.scrollTo({
-        top: issuesRef.current.scrollHeight,
+      rightPanelRef.current?.scrollTo({
+        top: rightPanelRef.current.scrollHeight,
         behavior: 'smooth',
       });
     });
@@ -86,6 +106,7 @@ export function CodeReviewPanel() {
       if (!next) break;
 
       setLiveIssue(next);
+      liveIssueRef.current = next;
       scrollIssues();
 
       await new Promise<void>((resolve) => {
@@ -98,13 +119,15 @@ export function CodeReviewPanel() {
         return [...current, next];
       });
       setLiveIssue(null);
+      liveIssueRef.current = null;
       scrollIssues();
       await new Promise((r) => setTimeout(r, 280));
     }
 
     processingRef.current = false;
     setIssuesStreaming(false);
-  }, [scrollIssues]);
+    tryFlushPendingResults();
+  }, [scrollIssues, tryFlushPendingResults]);
 
   const enqueueIssue = useCallback(
     (issue: ReviewIssue) => {
@@ -130,19 +153,6 @@ export function CodeReviewPanel() {
   const { sendMessage, status, error, stop } = useChat({
     transport,
     onData: (dataPart) => {
-      if (dataPart.type === 'data-text') {
-        const chunk = (dataPart.data as { content?: string }).content ?? '';
-        setStreamText((current) => {
-          const next = current + chunk;
-          requestAnimationFrame(() => {
-            streamRef.current?.scrollTo({
-              top: streamRef.current.scrollHeight,
-              behavior: 'smooth',
-            });
-          });
-          return next;
-        });
-      }
       if (dataPart.type === 'data-phase') {
         const { phase, status: phaseStatus } = dataPart.data as {
           phase: ReviewPhase;
@@ -152,6 +162,7 @@ export function CodeReviewPanel() {
           setValidating(true);
           setRevealedIssues([]);
           setLiveIssue(null);
+          liveIssueRef.current = null;
           issueQueueRef.current = [];
           seenIssueKeysRef.current.clear();
         }
@@ -172,10 +183,12 @@ export function CodeReviewPanel() {
         enqueueIssue(dataPart.data as ReviewIssue);
       }
       if (dataPart.type === 'data-summary') {
-        setSummary(dataPart.data as ReviewSummary);
+        pendingSummaryRef.current = dataPart.data as ReviewSummary;
+        tryFlushPendingResults();
       }
       if (dataPart.type === 'data-metrics') {
-        setMetrics(dataPart.data as ReviewMetrics);
+        pendingMetricsRef.current = dataPart.data as ReviewMetrics;
+        tryFlushPendingResults();
       }
       if (dataPart.type === 'data-token') {
         setTokens(dataPart.data as TokenUsage);
@@ -192,13 +205,16 @@ export function CodeReviewPanel() {
     setSubmitting(true);
     setRevealedIssues([]);
     setLiveIssue(null);
+    liveIssueRef.current = null;
     issueQueueRef.current = [];
     seenIssueKeysRef.current.clear();
     processingRef.current = false;
     setSummary(null);
     setMetrics(null);
+    pendingSummaryRef.current = null;
+    pendingMetricsRef.current = null;
+    liveIssueRef.current = null;
     setTokens(null);
-    setStreamText('');
     setValidating(false);
     setIssuesStreaming(false);
     setPhases(initialPhases());
@@ -219,8 +235,18 @@ export function CodeReviewPanel() {
 
   return (
     <AppShell>
-      <Container maxWidth="xl" sx={{ py: 4 }}>
-        <Box sx={{ mb: 4, display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', gap: 2, alignItems: { sm: 'flex-end' } }}>
+      <Container
+        maxWidth="xl"
+        sx={{
+          py: 4,
+          display: 'flex',
+          flexDirection: 'column',
+          height: { lg: 'calc(100vh - 64px)' },
+          overflow: { lg: 'hidden' },
+          boxSizing: 'border-box',
+        }}
+      >
+        <Box sx={{ mb: 4, flexShrink: 0, display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', gap: 2, alignItems: { sm: 'flex-end' } }}>
           <Box>
             <Typography variant="overline" color="secondary.main">
               Code Review
@@ -235,88 +261,88 @@ export function CodeReviewPanel() {
           <LanguageSelect value={language} onChange={setLanguage} disabled={isStreaming} />
         </Box>
 
-        <Box sx={{ display: 'grid', gridTemplateColumns: { lg: '1fr 1fr' }, gap: 3 }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, minHeight: 460 }}>
-            <Paper elevation={0} sx={{ flex: 1, overflow: 'hidden', p: 0.5 }}>
-              <MonacoCodeEditor
-                value={code}
-                language={language}
-                onChange={setCode}
-                readOnly={isStreaming}
-              />
-            </Paper>
-            <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-              <Button
-                variant="contained"
-                size="large"
-                onClick={() => void handleSubmit()}
-                disabled={isStreaming || !code.trim()}
-              >
-                {isStreaming ? 'Analyzing…' : 'Review Code'}
-              </Button>
-              {isStreaming && (
-                <Button variant="outlined" onClick={() => stop()}>
-                  Stop
+        <Box sx={{ flex: 1, minHeight: 0 }}>
+        <SplitReviewLayout
+          ref={rightPanelRef}
+          left={
+            <>
+              <Paper elevation={0} sx={{ flex: 1, overflow: 'hidden', p: 0.5, minHeight: 0 }}>
+                <MonacoCodeEditor
+                  value={code}
+                  language={language}
+                  onChange={setCode}
+                  readOnly={isStreaming}
+                />
+              </Paper>
+              <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', flexShrink: 0 }}>
+                <Button
+                  variant="contained"
+                  size="large"
+                  onClick={() => void handleSubmit()}
+                  disabled={isStreaming || !code.trim()}
+                >
+                  {isStreaming ? 'Analyzing…' : 'Review Code'}
                 </Button>
-              )}
-            </Box>
-            {error && <Alert severity="error">{error.message}</Alert>}
-          </Box>
-
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {isStreaming && <PhaseProgress phases={phases} />}
-            {(isStreaming || streamText) && (
-              <StreamingTextPanel ref={streamRef} text={streamText} active={isStreaming && !validating && !issuesStreaming} />
-            )}
-            <TokenUsageBar usage={tokens} />
-            <ReviewSummaryCard summary={summary} metrics={metrics} />
-            <Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                  Confirmed issues ({issueCount})
-                </Typography>
-                {issuesStreaming && (
-                  <Chip label="Live" size="small" color="primary" variant="outlined" />
+                {isStreaming && (
+                  <Button variant="outlined" onClick={() => stop()}>
+                    Stop
+                  </Button>
                 )}
               </Box>
-              <Box
-                ref={issuesRef}
-                sx={{ maxHeight: 480, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 1.5, pr: 0.5 }}
-              >
-                {revealedIssues.map((issue, i) => (
-                  <IssueCard key={`${issueKey(issue)}-${i}`} issue={issue} />
-                ))}
-                {liveIssue && (
-                  <StreamingIssueCard
-                    key={issueKey(liveIssue)}
-                    issue={liveIssue}
-                    onComplete={handleIssueRevealComplete}
-                  />
-                )}
-                {validating && (
-                  <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Cross-checking findings against your source code…
-                    </Typography>
-                  </Paper>
-                )}
-                {!issueCount && !validating && isStreaming && (
-                  <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Scanning code — confirmed issues will stream in shortly
-                    </Typography>
-                  </Paper>
-                )}
-                {!issueCount && !isStreaming && (
-                  <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Evidence-backed issues will stream here after analysis
-                    </Typography>
-                  </Paper>
-                )}
+              {error && <Alert severity="error">{error.message}</Alert>}
+            </>
+          }
+          right={
+            <>
+              {isStreaming && <PhaseProgress phases={phases} />}
+              <TokenUsageBar usage={tokens} />
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                    Confirmed issues ({issueCount})
+                  </Typography>
+                  {issuesStreaming && (
+                    <Chip label="Live" size="small" color="primary" variant="outlined" />
+                  )}
+                </Box>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  {revealedIssues.map((issue, i) => (
+                    <IssueCard key={`${issueKey(issue)}-${i}`} issue={issue} />
+                  ))}
+                  {liveIssue && (
+                    <StreamingIssueCard
+                      key={issueKey(liveIssue)}
+                      issue={liveIssue}
+                      onComplete={handleIssueRevealComplete}
+                    />
+                  )}
+                  {validating && (
+                    <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Cross-checking findings against your source code…
+                      </Typography>
+                    </Paper>
+                  )}
+                  {!issueCount && !validating && isStreaming && (
+                    <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Scanning code — confirmed issues will stream in shortly
+                      </Typography>
+                    </Paper>
+                  )}
+                  {!issueCount && !isStreaming && (
+                    <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Evidence-backed issues will stream here after analysis
+                      </Typography>
+                    </Paper>
+                  )}
+                </Box>
               </Box>
-            </Box>
-          </Box>
+              <ReviewSummaryCard summary={summary} metrics={metrics} />
+            </>
+          }
+        />
         </Box>
       </Container>
     </AppShell>
