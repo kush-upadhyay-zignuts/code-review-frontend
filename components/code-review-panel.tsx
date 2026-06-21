@@ -20,13 +20,11 @@ import type {
   ReviewMetrics,
   ReviewSummary,
   ReviewPhase,
-  SupportedLanguage,
   TokenUsage,
 } from '@/lib/types';
 import { SplitReviewLayout } from '@/components/split-review-layout';
 import {
   IssueCard,
-  LanguageSelect,
   PhaseProgress,
   ReviewSummaryCard,
   TokenUsageBar,
@@ -49,7 +47,6 @@ const initialPhases = (): Record<ReviewPhase, 'pending' | 'active' | 'done'> => 
 export function CodeReviewPanel() {
   const token = useAuthStore((s) => s.accessToken);
   const [code, setCode] = useState(DEFAULT_CODE);
-  const [language, setLanguage] = useState<SupportedLanguage>('javascript');
   const [revealedIssues, setRevealedIssues] = useState<ReviewIssue[]>([]);
   const [liveIssue, setLiveIssue] = useState<ReviewIssue | null>(null);
   const [summary, setSummary] = useState<ReviewSummary | null>(null);
@@ -221,9 +218,9 @@ export function CodeReviewPanel() {
 
     try {
       await sendMessage(
-        { text: `Review ${language} code` },
+        { text: 'Review code' },
         {
-          body: { code, language },
+          body: { code },
           headers: { Authorization: `Bearer ${token}` },
         },
       );
@@ -231,7 +228,7 @@ export function CodeReviewPanel() {
       setSubmitting(false);
       setValidating(false);
     }
-  }, [code, isStreaming, language, sendMessage, token]);
+  }, [code, isStreaming, sendMessage, token]);
 
   return (
     <AppShell>
@@ -246,19 +243,16 @@ export function CodeReviewPanel() {
           boxSizing: 'border-box',
         }}
       >
-        <Box sx={{ mb: 4, flexShrink: 0, display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', gap: 2, alignItems: { sm: 'flex-end' } }}>
-          <Box>
-            <Typography variant="overline" color="secondary.main">
-              Code Review
-            </Typography>
-            <Typography variant="h4" color="text.primary">
-              Evidence-based analysis
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Findings are validated against your code — only issues with &ge;80% confidence are shown.
-            </Typography>
-          </Box>
-          <LanguageSelect value={language} onChange={setLanguage} disabled={isStreaming} />
+        <Box sx={{ mb: 4, flexShrink: 0 }}>
+          <Typography variant="overline" color="secondary.main">
+            Code Review
+          </Typography>
+          <Typography variant="h4" color="text.primary">
+            Evidence-based analysis
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Findings are validated against your code — only issues with &ge;80% confidence are shown. Language is auto-detected.
+          </Typography>
         </Box>
 
         <Box sx={{ flex: 1, minHeight: 0 }}>
@@ -269,7 +263,6 @@ export function CodeReviewPanel() {
               <Paper elevation={0} sx={{ flex: 1, overflow: 'hidden', p: 0.5, minHeight: 0 }}>
                 <MonacoCodeEditor
                   value={code}
-                  language={language}
                   onChange={setCode}
                   readOnly={isStreaming}
                 />

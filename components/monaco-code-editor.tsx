@@ -7,7 +7,7 @@ const Editor = dynamic(() => import('@monaco-editor/react'), { ssr: false });
 
 interface MonacoCodeEditorProps {
   value: string;
-  language: SupportedLanguage;
+  language?: SupportedLanguage;
   onChange: (value: string) => void;
   readOnly?: boolean;
 }
@@ -18,7 +18,7 @@ export function MonacoCodeEditor({
   onChange,
   readOnly,
 }: MonacoCodeEditorProps) {
-  const monacoLanguage = language === 'other' ? 'plaintext' : language;
+  const monacoLanguage = !language || language === 'other' ? 'plaintext' : language;
 
   return (
     <div className="h-full min-h-[400px]">

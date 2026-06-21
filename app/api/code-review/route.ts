@@ -15,10 +15,11 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as ReviewBody;
   const code = body.code?.trim();
-  const language = body.language?.trim();
+  // Language is optional — when absent the AI auto-detects it from the code
+  const language = body.language?.trim() || undefined;
 
-  if (!code || !language) {
-    return Response.json({ message: 'Both code and language are required.' }, { status: 400 });
+  if (!code) {
+    return Response.json({ message: 'code is required.' }, { status: 400 });
   }
 
   const authHeader = request.headers.get('authorization');
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
       'Content-Type': 'application/json',
       Authorization: authHeader,
     },
-    body: JSON.stringify({ code, language }),
+    body: JSON.stringify({ code, ...(language ? { language } : {}) }),
   }).catch(() => null);
 
   if (!upstream) {

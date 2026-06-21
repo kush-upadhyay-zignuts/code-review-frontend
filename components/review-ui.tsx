@@ -151,8 +151,16 @@ export function PhaseProgress({
 }: {
   phases: Record<ReviewPhase, 'pending' | 'active' | 'done'>;
 }) {
+  const total = REVIEW_PHASES.length;
   const doneCount = Object.values(phases).filter((s) => s === 'done').length;
-  const progress = (doneCount / REVIEW_PHASES.length) * 100;
+  const activeCount = Object.values(phases).filter((s) => s === 'active').length;
+
+  // Solid progress: only fully-done phases
+  const value = (doneCount / total) * 100;
+  // Buffer (ghost) progress: done + half credit for active phase — gives a visual "next stop"
+  const valueBuffer = ((doneCount + activeCount * 0.5) / total) * 100;
+  const hasActive = activeCount > 0;
+  const displayPct = Math.round(hasActive ? valueBuffer : value);
 
   return (
     <Paper elevation={0} sx={{ p: 2 }}>
@@ -161,26 +169,136 @@ export function PhaseProgress({
           Review progress
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          {Math.round(progress)}%
+          {displayPct}%
         </Typography>
       </Box>
-      <LinearProgress variant="determinate" value={progress} sx={{ mb: 2, borderRadius: 1 }} />
+
+      {/* Stack: buffer bar (done → next) + indeterminate shimmer when active */}
+      <Box sx={{ position: 'relative', mb: 2 }}>
+        <LinearProgress
+          variant="buffer"
+          value={value}
+          valueBuffer={valueBuffer}
+          sx={{
+            borderRadius: 1,
+            height: 6,
+            transition: 'transform 0.6s ease',
+            '& .MuiLinearProgress-bar1Buffer': {
+              transition: 'transform 0.6s ease',
+            },
+            '& .MuiLinearProgress-bar2Buffer': {
+              transition: 'transform 0.6s ease',
+              opacity: 0.35,
+            },
+            '& .MuiLinearProgress-dashed': {
+              display: 'none',
+            },
+          }}
+        />
+        {hasActive && (
+          <LinearProgress
+            variant="indeterminate"
+            sx={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              borderRadius: 1,
+              height: 6,
+              opacity: 0.25,
+              bgcolor: 'transparent',
+            }}
+          />
+        )}
+      </Box>
+
       {REVIEW_PHASES.map(({ id, label }) => {
         const status = phases[id];
+        const isActive = status === 'active';
+        const isDone = status === 'done';
         return (
           <Box key={id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 0.5 }}>
+            {/* Animated dot for active, checkmark for done, hollow for pending */}
+            <Box sx={{ position: 'relative', width: 10, height: 10, flexShrink: 0 }}>
+              {isActive ? (
+                <>
+                  {/* Outer pulse ring */}
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      inset: -2,
+                      borderRadius: '50%',
+                      bgcolor: 'primary.main',
+                      opacity: 0.3,
+                      animation: 'ping 1.2s ease-out infinite',
+                      '@keyframes ping': {
+                        '0%': { transform: 'scale(1)', opacity: 0.35 },
+                        '100%': { transform: 'scale(2.2)', opacity: 0 },
+                      },
+                    }}
+                  />
+                  {/* Inner solid dot */}
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      inset: 0,
+                      borderRadius: '50%',
+                      bgcolor: 'primary.main',
+                    }}
+                  />
+                </>
+              ) : (
+                <Box
+                  sx={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    bgcolor: isDone ? 'success.main' : 'action.disabled',
+                    transition: 'background-color 0.4s ease',
+                  }}
+                />
+              )}
+            </Box>
+
             <Typography
               variant="body2"
-              color={
-                status === 'done'
+              sx={{
+                transition: 'color 0.3s ease, font-weight 0.3s ease',
+                color: isDone
                   ? 'success.main'
-                  : status === 'active'
+                  : isActive
                     ? 'primary.main'
-                    : 'text.secondary'
-              }
+                    : 'text.disabled',
+                fontWeight: isActive ? 600 : 400,
+              }}
             >
-              {status === 'done' ? '✓' : status === 'active' ? '…' : '○'} {label}
-              {status === 'active' ? '…' : ''}
+              {label}
+              {isActive && (
+                <Box
+                  component="span"
+                  sx={{
+                    display: 'inline-block',
+                    ml: 0.5,
+                    animation: 'ellipsis 1.4s steps(4, end) infinite',
+                    '@keyframes ellipsis': {
+                      '0%':  { content: '"."' },
+                      '33%': { content: '".."' },
+                      '66%': { content: '"..."' },
+                      '100%':{ content: '"."' },
+                    },
+                    '&::after': {
+                      content: '"..."',
+                      animation: 'dots 1.4s steps(4, end) infinite',
+                      '@keyframes dots': {
+                        '0%':  { content: '"."' },
+                        '33%': { content: '".."' },
+                        '66%': { content: '"..."' },
+                        '100%':{ content: '"."' },
+                      },
+                    },
+                  }}
+                />
+              )}
             </Typography>
           </Box>
         );
@@ -188,6 +306,7 @@ export function PhaseProgress({
     </Paper>
   );
 }
+
 
 export const StreamingTextPanel = forwardRef<
   HTMLDivElement,
