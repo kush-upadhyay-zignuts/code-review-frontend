@@ -131,9 +131,9 @@ export default function LoginForm() {
           autoComplete="current-password"
         />
 
-        <Box sx={{ textAlign: 'right', mt: -1 }}>
+        {/* <Box sx={{ textAlign: 'right', mt: -1 }}>
           <AuthLink href="/forgot-password">Forgot password?</AuthLink>
-        </Box>
+        </Box> */}
 
         {serverError && <Alert severity="error">{serverError}</Alert>}
 
