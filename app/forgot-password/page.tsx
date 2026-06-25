@@ -6,8 +6,9 @@ import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
 import Alert from '@mui/material/Alert';
 import Typography from '@mui/material/Typography';
-import { useSnackbar } from 'notistack';
 import { API_BASE } from '@/lib/api';
+import { parseApiError } from '@/lib/parse-api-error';
+import { toast } from '@/lib/toast';
 import { AuthLayout, AuthLink } from '@/components/ui/auth-layout';
 
 const RESEND_COOLDOWN_SEC = 60;
@@ -18,22 +19,9 @@ function formatCooldown(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function parseApiError(text: string, fallback: string): string {
-  try {
-    const json = JSON.parse(text) as { message?: string | string[] };
-    if (typeof json.message === 'string') return json.message;
-    if (Array.isArray(json.message)) return json.message.join(', ');
-  } catch {
-    if (text) return text;
-  }
-  return fallback;
-}
-
 export default function ForgotPasswordPage() {
-  const { enqueueSnackbar } = useSnackbar();
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState('');
-  const [serverError, setServerError] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [cooldown, setCooldown] = useState(0);
@@ -59,7 +47,6 @@ export default function ForgotPasswordPage() {
   }, [email]);
 
   const sendResetEmail = useCallback(async (): Promise<boolean> => {
-    setServerError('');
     setEmailError('');
 
     if (!validateEmail()) return false;
@@ -74,23 +61,20 @@ export default function ForgotPasswordPage() {
 
       if (!response.ok) {
         const text = await response.text();
-        setServerError(parseApiError(text, 'Failed to send reset email'));
+        toast.error(parseApiError(text, 'Failed to send reset email'), 'forgot-password-error');
         return false;
       }
 
       setSent(true);
       setCooldown(RESEND_COOLDOWN_SEC);
-      enqueueSnackbar('If the email exists, a reset link has been sent.', {
-        variant: 'info',
-      });
       return true;
     } catch {
-      setServerError('Something went wrong. Please try again.');
+      toast.error('Something went wrong. Please try again.', 'forgot-password-error');
       return false;
     } finally {
       setLoading(false);
     }
-  }, [email, enqueueSnackbar, validateEmail]);
+  }, [email, validateEmail]);
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -125,8 +109,6 @@ export default function ForgotPasswordPage() {
             </Typography>
           )}
 
-          {serverError && <Alert severity="error">{serverError}</Alert>}
-
           <Button
             variant="outlined"
             size="large"
@@ -146,7 +128,6 @@ export default function ForgotPasswordPage() {
             size="small"
             onClick={() => {
               setSent(false);
-              setServerError('');
               setCooldown(0);
             }}
             sx={{ textTransform: 'none' }}
@@ -169,8 +150,6 @@ export default function ForgotPasswordPage() {
             }}
             autoComplete="email"
           />
-
-          {serverError && <Alert severity="error">{serverError}</Alert>}
 
           <Button type="submit" variant="contained" size="large" disabled={loading} fullWidth>
             {loading ? 'Sending…' : 'Send reset link'}

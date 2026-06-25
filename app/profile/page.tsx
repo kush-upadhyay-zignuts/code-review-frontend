@@ -11,7 +11,9 @@ import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import Avatar from '@mui/material/Avatar';
 import { AppShell } from '@/components/app-shell';
+import { ChangePasswordForm } from '@/components/profile/change-password-form';
 import { apiFetch } from '@/lib/api';
+import { toast } from '@/lib/toast';
 import { useAuthStore } from '@/lib/auth-store';
 import type { DashboardStats, UserAccountDetails } from '@/lib/types';
 
@@ -59,6 +61,9 @@ export default function ProfilePage() {
       .then(([accountData, statsData]) => {
         setAccount(accountData);
         setStats(statsData);
+      })
+      .catch(() => {
+        toast.error('Failed to load profile data.', 'profile-load-error');
       })
       .finally(() => setLoading(false));
   }, []);
@@ -222,6 +227,20 @@ export default function ProfilePage() {
                   </Typography>
                 </Box>
               )}
+            </Paper>
+
+            <Paper elevation={0} sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { sm: 'center' }, gap: 2 }}>
+                <Box>
+                  <Typography variant="h6" sx={{ mb: 0.5 }}>
+                    Password
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Keep your account secure with a strong, unique password.
+                  </Typography>
+                </Box>
+                <ChangePasswordForm />
+              </Box>
             </Paper>
 
             <Paper elevation={0} sx={{ p: 3 }}>

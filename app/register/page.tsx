@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
-import Alert from '@mui/material/Alert';
 import { API_BASE } from '@/lib/api';
+import { parseApiError } from '@/lib/parse-api-error';
+import { toast } from '@/lib/toast';
 import { AuthLayout, AuthLink } from '@/components/ui/auth-layout';
 import { PasswordField } from '@/components/ui/password-field';
 import {
@@ -27,7 +28,6 @@ export default function RegisterPage() {
   const router = useRouter();
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState<RegisterFormErrors>({});
-  const [serverError, setServerError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const update = (field: keyof typeof form, value: string) => {
@@ -51,7 +51,6 @@ export default function RegisterPage() {
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    setServerError('');
 
     const validationErrors = validateRegisterForm(form);
     setErrors(validationErrors);
@@ -67,19 +66,13 @@ export default function RegisterPage() {
 
       if (!response.ok) {
         const text = await response.text();
-        try {
-          const parsed = JSON.parse(text) as { message?: string | string[] };
-          const msg = parsed.message;
-          setServerError(Array.isArray(msg) ? msg.join(', ') : msg ?? text);
-        } catch {
-          setServerError(text || 'Registration failed');
-        }
+        toast.error(parseApiError(text, 'Registration failed'), 'register-error');
         return;
       }
 
       router.push('/login?registered=1');
     } catch {
-      setServerError('Something went wrong. Please try again.');
+      toast.error('Something went wrong. Please try again.', 'register-error');
     } finally {
       setLoading(false);
     }
@@ -152,8 +145,6 @@ export default function RegisterPage() {
           onBlur={() => validateField('confirmPassword')}
           autoComplete="new-password"
         />
-
-        {serverError && <Alert severity="error">{serverError}</Alert>}
 
         <Button type="submit" variant="contained" size="large" disabled={loading} fullWidth>
           {loading ? 'Creating account…' : 'Create account'}

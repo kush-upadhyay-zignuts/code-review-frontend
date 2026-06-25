@@ -1,7 +1,7 @@
 'use client';
 
 import { createTheme, ThemeProvider, CssBaseline } from '@mui/material';
-import { SnackbarProvider } from 'notistack';
+import { Toaster } from 'sonner';
 
 const theme = createTheme({
   palette: {
@@ -43,13 +43,13 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <SnackbarProvider
-        maxSnack={3}
-        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-        autoHideDuration={4000}
-      >
-        {children}
-      </SnackbarProvider>
+      <Toaster
+        position="top-right"
+        closeButton
+        visibleToasts={3}
+        theme="dark"
+      />
+      {children}
     </ThemeProvider>
   );
 }

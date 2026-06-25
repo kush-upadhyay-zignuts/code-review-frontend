@@ -6,9 +6,9 @@ import Container from '@mui/material/Container';
 import Grid from '@mui/material/Grid';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
-import Alert from '@mui/material/Alert';
 import { AppShell } from '@/components/app-shell';
 import { apiFetch } from '@/lib/api';
+import { toast } from '@/lib/toast';
 
 interface AdminAnalytics {
   totalUsers: number;
@@ -42,12 +42,15 @@ const metricConfig: {
 
 export default function AdminPage() {
   const [data, setData] = useState<AdminAnalytics | null>(null);
-  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     void apiFetch<AdminAnalytics>('/admin/analytics')
       .then(setData)
-      .catch((err: Error) => setError(err.message));
+      .catch((err: Error) => {
+        toast.error(err.message || 'Failed to load analytics', 'admin-analytics-error');
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   return (
@@ -62,8 +65,6 @@ export default function AdminPage() {
             Monitor usage, token consumption, and system configuration across all users.
           </Typography>
         </Box>
-
-        {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
 
         {data && (
           <Grid container spacing={2}>
@@ -82,7 +83,7 @@ export default function AdminPage() {
           </Grid>
         )}
 
-        {!data && !error && (
+        {loading && !data && (
           <Paper elevation={0} sx={{ p: 6, textAlign: 'center' }}>
             <Typography color="text.secondary">Loading analytics…</Typography>
           </Paper>

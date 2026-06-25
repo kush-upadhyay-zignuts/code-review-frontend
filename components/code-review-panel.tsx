@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import Box from '@mui/material/Box';
@@ -9,7 +9,6 @@ import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import Paper from '@mui/material/Paper';
-import Alert from '@mui/material/Alert';
 import { AppShell } from '@/components/app-shell';
 import { MonacoCodeEditor } from '@/components/monaco-code-editor';
 import { StreamingIssueCard } from '@/components/streaming-issue-card';
@@ -23,6 +22,7 @@ import type {
   TokenUsage,
 } from '@/lib/types';
 import { SplitReviewLayout } from '@/components/split-review-layout';
+import { toast } from '@/lib/toast';
 import {
   IssueCard,
   PhaseProgress,
@@ -193,6 +193,12 @@ export function CodeReviewPanel() {
     },
   });
 
+  useEffect(() => {
+    if (error?.message) {
+      toast.error(error.message, 'review-error');
+    }
+  }, [error]);
+
   const isStreaming = status === 'streaming' || status === 'submitted' || submitting;
   const issueCount = revealedIssues.length + (liveIssue ? 1 : 0);
 
@@ -282,7 +288,6 @@ export function CodeReviewPanel() {
                   </Button>
                 )}
               </Box>
-              {error && <Alert severity="error">{error.message}</Alert>}
             </>
           }
           right={
