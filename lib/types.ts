@@ -77,6 +77,14 @@ export interface ReviewHistoryItem {
   };
 }
 
+export interface PaginatedReviewHistory {
+  items: ReviewHistoryItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export const SUPPORTED_LANGUAGES = [
   'javascript',
   'typescript',
