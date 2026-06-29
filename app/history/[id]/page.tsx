@@ -7,6 +7,7 @@ import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
 import Paper from '@mui/material/Paper';
+import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
 import { AppShell } from '@/components/app-shell';
 import { MonacoCodeEditor } from '@/components/monaco-code-editor';
@@ -20,19 +21,87 @@ export default function HistoryDetailPage() {
   const [review, setReview] = useState<
     (ReviewHistoryItem & { code?: string }) | null
   >(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (params.id) {
-      void apiFetch<ReviewHistoryItem & { code?: string }>(`/reviews/${params.id}`).then(setReview);
+      setLoading(true);
+      void apiFetch<ReviewHistoryItem & { code?: string }>(`/reviews/${params.id}`)
+        .then(setReview)
+        .finally(() => setLoading(false));
     }
   }, [params.id]);
+
+  if (loading) {
+    return (
+      <AppShell>
+        <Container
+          maxWidth="xl"
+          sx={{
+            py: 4,
+            display: 'flex',
+            flexDirection: 'column',
+            height: { lg: 'calc(100vh - 64px)' },
+            overflow: { lg: 'hidden' },
+            boxSizing: 'border-box',
+          }}
+        >
+          <Box sx={{ mb: 4, flexShrink: 0, display: 'flex', justifyContent: 'space-between', gap: 2 }}>
+            <Box sx={{ flex: 1 }}>
+              <Skeleton variant="text" width={140} height={20} />
+              <Skeleton variant="text" width={220} height={40} sx={{ mt: 1 }} />
+              <Skeleton variant="text" width={280} height={24} />
+            </Box>
+            <Skeleton variant="rounded" width={100} height={32} />
+          </Box>
+
+          <Box sx={{ flex: 1, minHeight: 0 }}>
+            <SplitReviewLayout
+              left={
+                <Paper elevation={0} sx={{ flex: 1, overflow: 'hidden', p: 0.5, minHeight: 0 }}>
+                  <Skeleton variant="rounded" sx={{ width: '100%', height: { xs: 360, lg: '100%' }, minHeight: 360 }} />
+                </Paper>
+              }
+              right={
+                <>
+                  <Paper elevation={0} sx={{ p: 2.5 }}>
+                    <Skeleton variant="text" width="35%" height={28} />
+                    <Skeleton variant="text" width="100%" height={20} sx={{ mt: 1 }} />
+                    <Skeleton variant="text" width="92%" height={20} />
+                    <Skeleton variant="text" width="78%" height={20} />
+                    <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                      <Skeleton variant="rounded" width={80} height={28} />
+                      <Skeleton variant="rounded" width={80} height={28} />
+                      <Skeleton variant="rounded" width={80} height={28} />
+                    </Box>
+                  </Paper>
+                  {Array.from({ length: 3 }).map((_, index) => (
+                    <Paper key={index} elevation={0} sx={{ p: 2 }}>
+                      <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
+                        <Skeleton variant="rounded" width={72} height={24} />
+                        <Skeleton variant="rounded" width={88} height={24} />
+                      </Box>
+                      <Skeleton variant="text" width="70%" height={24} />
+                      <Skeleton variant="text" width="100%" height={20} sx={{ mt: 1 }} />
+                      <Skeleton variant="text" width="95%" height={20} />
+                      <Skeleton variant="rounded" height={72} sx={{ mt: 1.5 }} />
+                    </Paper>
+                  ))}
+                </>
+              }
+            />
+          </Box>
+        </Container>
+      </AppShell>
+    );
+  }
 
   if (!review) {
     return (
       <AppShell>
         <Container maxWidth="xl" sx={{ py: 4 }}>
           <Paper elevation={0} sx={{ p: 6, textAlign: 'center' }}>
-            <Typography color="text.secondary">Loading review…</Typography>
+            <Typography color="text.secondary">Review not found.</Typography>
           </Paper>
         </Container>
       </AppShell>

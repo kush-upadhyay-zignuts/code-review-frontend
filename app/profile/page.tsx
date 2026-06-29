@@ -8,6 +8,7 @@ import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid';
 import LinearProgress from '@mui/material/LinearProgress';
 import Paper from '@mui/material/Paper';
+import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
 import Avatar from '@mui/material/Avatar';
 import { AppShell } from '@/components/app-shell';
@@ -89,9 +90,67 @@ export default function ProfilePage() {
         </Typography>
 
         {loading ? (
-          <Paper elevation={0} sx={{ p: 6, textAlign: 'center' }}>
-            <Typography color="text.secondary">Loading profile…</Typography>
-          </Paper>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Paper elevation={0} sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, mb: 2 }}>
+                <Skeleton variant="circular" width={72} height={72} />
+                <Box sx={{ flex: 1 }}>
+                  <Skeleton variant="text" width="45%" height={36} />
+                  <Skeleton variant="text" width="60%" height={22} sx={{ mt: 0.5 }} />
+                  <Box sx={{ mt: 1.5, display: 'flex', gap: 1 }}>
+                    <Skeleton variant="rounded" width={88} height={24} />
+                    <Skeleton variant="rounded" width={64} height={24} />
+                  </Box>
+                </Box>
+              </Box>
+              <Divider sx={{ my: 2 }} />
+              <Grid container spacing={2}>
+                {Array.from({ length: 7 }).map((_, index) => (
+                  <Grid key={index} size={{ xs: 12, sm: index >= 6 ? 12 : 6 }}>
+                    <Skeleton variant="text" width="35%" height={18} />
+                    <Skeleton variant="text" width={index % 2 === 0 ? '70%' : '55%'} height={28} sx={{ mt: 0.5 }} />
+                  </Grid>
+                ))}
+              </Grid>
+            </Paper>
+
+            <Paper elevation={0} sx={{ p: 3 }}>
+              <Skeleton variant="text" width={180} height={32} sx={{ mb: 2 }} />
+              <Grid container spacing={2}>
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <Grid key={index} size={{ xs: 12, sm: index === 4 ? 12 : 6 }}>
+                    <Skeleton variant="text" width="40%" height={18} />
+                    <Skeleton variant="text" width="50%" height={28} sx={{ mt: 0.5 }} />
+                  </Grid>
+                ))}
+              </Grid>
+              <Box sx={{ mt: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                  <Skeleton variant="text" width={160} height={22} />
+                  <Skeleton variant="text" width={72} height={22} />
+                </Box>
+                <Skeleton variant="rounded" height={8} sx={{ borderRadius: 1 }} />
+                <Skeleton variant="text" width="75%" height={18} sx={{ mt: 1 }} />
+              </Box>
+            </Paper>
+
+            <Paper elevation={0} sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', gap: 2 }}>
+                <Box sx={{ flex: 1 }}>
+                  <Skeleton variant="text" width={120} height={32} />
+                  <Skeleton variant="text" width="90%" height={22} sx={{ mt: 0.5 }} />
+                </Box>
+                <Skeleton variant="rounded" width={160} height={36} />
+              </Box>
+            </Paper>
+
+            <Paper elevation={0} sx={{ p: 3 }}>
+              <Skeleton variant="text" width={180} height={32} sx={{ mb: 1 }} />
+              <Skeleton variant="text" width="100%" height={22} />
+              <Skeleton variant="text" width="96%" height={22} sx={{ mt: 0.5 }} />
+              <Skeleton variant="text" width="88%" height={22} sx={{ mt: 0.5 }} />
+            </Paper>
+          </Box>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             <Paper elevation={0} sx={{ p: 3 }}>
