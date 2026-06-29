@@ -13,7 +13,7 @@ import { AppShell } from '@/components/app-shell';
 import { MonacoCodeEditor } from '@/components/monaco-code-editor';
 import { StreamingIssueCard } from '@/components/streaming-issue-card';
 import { useAuthStore } from '@/lib/auth-store';
-import { issueKey } from '@/lib/stream-issue-parser';
+import { issueKey, normalizeIssue } from '@/lib/stream-issue-parser';
 import type {
   ReviewIssue,
   ReviewMetrics,
@@ -56,6 +56,8 @@ export function CodeReviewPanel() {
   const [submitting, setSubmitting] = useState(false);
   const [validating, setValidating] = useState(false);
   const [issuesStreaming, setIssuesStreaming] = useState(false);
+  const [reviewActive, setReviewActive] = useState(false);
+  const [reviewComplete, setReviewComplete] = useState(false);
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const issueQueueRef = useRef<ReviewIssue[]>([]);
   const processingRef = useRef(false);
@@ -64,6 +66,18 @@ export function CodeReviewPanel() {
   const pendingMetricsRef = useRef<ReviewMetrics | null>(null);
   const completeResolverRef = useRef<(() => void) | null>(null);
   const seenIssueKeysRef = useRef<Set<string>>(new Set());
+  const streamEndedRef = useRef(false);
+
+  const resetIssuePipeline = useCallback(() => {
+    completeResolverRef.current?.();
+    completeResolverRef.current = null;
+    processingRef.current = false;
+    issueQueueRef.current = [];
+    seenIssueKeysRef.current.clear();
+    setLiveIssue(null);
+    liveIssueRef.current = null;
+    setIssuesStreaming(false);
+  }, []);
 
   const tryFlushPendingResults = useCallback(() => {
     if (
@@ -83,6 +97,27 @@ export function CodeReviewPanel() {
       pendingMetricsRef.current = null;
     }
   }, []);
+
+  const tryFinalizeReviewRef = useRef<() => void>(() => {});
+
+  const tryFinalizeReview = useCallback(() => {
+    if (
+      !streamEndedRef.current ||
+      processingRef.current ||
+      issueQueueRef.current.length > 0 ||
+      liveIssueRef.current
+    ) {
+      return;
+    }
+
+    setReviewActive(false);
+    setReviewComplete(true);
+    setSubmitting(false);
+    setValidating(false);
+    tryFlushPendingResults();
+  }, [tryFlushPendingResults]);
+
+  tryFinalizeReviewRef.current = tryFinalizeReview;
 
   const scrollIssues = useCallback(() => {
     requestAnimationFrame(() => {
@@ -124,6 +159,7 @@ export function CodeReviewPanel() {
     processingRef.current = false;
     setIssuesStreaming(false);
     tryFlushPendingResults();
+    tryFinalizeReviewRef.current();
   }, [scrollIssues, tryFlushPendingResults]);
 
   const enqueueIssue = useCallback(
@@ -149,6 +185,10 @@ export function CodeReviewPanel() {
 
   const { sendMessage, status, error, stop } = useChat({
     transport,
+    onFinish: () => {
+      streamEndedRef.current = true;
+      tryFinalizeReviewRef.current();
+    },
     onData: (dataPart) => {
       if (dataPart.type === 'data-phase') {
         const { phase, status: phaseStatus } = dataPart.data as {
@@ -158,10 +198,7 @@ export function CodeReviewPanel() {
         if (phase === 'validating_findings' && phaseStatus === 'started') {
           setValidating(true);
           setRevealedIssues([]);
-          setLiveIssue(null);
-          liveIssueRef.current = null;
-          issueQueueRef.current = [];
-          seenIssueKeysRef.current.clear();
+          resetIssuePipeline();
         }
         if (phase === 'validating_findings' && phaseStatus === 'complete') {
           setValidating(false);
@@ -177,7 +214,8 @@ export function CodeReviewPanel() {
         }));
       }
       if (dataPart.type === 'data-issue') {
-        enqueueIssue(dataPart.data as ReviewIssue);
+        const issue = normalizeIssue(dataPart.data as Record<string, unknown>);
+        if (issue) enqueueIssue(issue);
       }
       if (dataPart.type === 'data-summary') {
         pendingSummaryRef.current = dataPart.data as ReviewSummary;
@@ -199,27 +237,26 @@ export function CodeReviewPanel() {
     }
   }, [error]);
 
-  const isStreaming = status === 'streaming' || status === 'submitted' || submitting;
+  const isApiStreaming = status === 'streaming' || status === 'submitted' || submitting;
+  const isReviewInProgress =
+    reviewActive || isApiStreaming || issuesStreaming || validating || liveIssue !== null;
   const issueCount = revealedIssues.length + (liveIssue ? 1 : 0);
 
   const handleSubmit = useCallback(async () => {
-    if (!code.trim() || isStreaming || !token) return;
+    if (!code.trim() || isReviewInProgress || !token) return;
 
     setSubmitting(true);
+    setReviewActive(true);
+    setReviewComplete(false);
+    streamEndedRef.current = false;
     setRevealedIssues([]);
-    setLiveIssue(null);
-    liveIssueRef.current = null;
-    issueQueueRef.current = [];
-    seenIssueKeysRef.current.clear();
-    processingRef.current = false;
+    resetIssuePipeline();
     setSummary(null);
     setMetrics(null);
     pendingSummaryRef.current = null;
     pendingMetricsRef.current = null;
-    liveIssueRef.current = null;
     setTokens(null);
     setValidating(false);
-    setIssuesStreaming(false);
     setPhases(initialPhases());
 
     try {
@@ -230,11 +267,15 @@ export function CodeReviewPanel() {
           headers: { Authorization: `Bearer ${token}` },
         },
       );
-    } finally {
+    } catch {
+      setReviewActive(false);
       setSubmitting(false);
       setValidating(false);
+    } finally {
+      streamEndedRef.current = true;
+      tryFinalizeReviewRef.current();
     }
-  }, [code, isStreaming, sendMessage, token]);
+  }, [code, isReviewInProgress, resetIssuePipeline, sendMessage, token]);
 
   return (
     <AppShell>
@@ -270,7 +311,7 @@ export function CodeReviewPanel() {
                 <MonacoCodeEditor
                   value={code}
                   onChange={setCode}
-                  readOnly={isStreaming}
+                  readOnly={isReviewInProgress}
                 />
               </Paper>
               <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', flexShrink: 0 }}>
@@ -278,11 +319,11 @@ export function CodeReviewPanel() {
                   variant="contained"
                   size="large"
                   onClick={() => void handleSubmit()}
-                  disabled={isStreaming || !code.trim()}
+                  disabled={isReviewInProgress || !code.trim()}
                 >
-                  {isStreaming ? 'Analyzing…' : 'Review Code'}
+                  {isReviewInProgress ? 'Analyzing…' : 'Review Code'}
                 </Button>
-                {isStreaming && (
+                {isApiStreaming && (
                   <Button variant="outlined" onClick={() => stop()}>
                     Stop
                   </Button>
@@ -292,7 +333,7 @@ export function CodeReviewPanel() {
           }
           right={
             <>
-              {isStreaming && <PhaseProgress phases={phases} />}
+              {isApiStreaming && <PhaseProgress phases={phases} />}
               <TokenUsageBar usage={tokens} />
               <Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
@@ -321,17 +362,31 @@ export function CodeReviewPanel() {
                       </Typography>
                     </Paper>
                   )}
-                  {!issueCount && !validating && isStreaming && (
+                  {!issueCount && !validating && isApiStreaming && (
                     <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
                       <Typography variant="body2" color="text.secondary">
                         Scanning code — confirmed issues will stream in shortly
                       </Typography>
                     </Paper>
                   )}
-                  {!issueCount && !isStreaming && (
+                  {!issueCount && !validating && !isApiStreaming && issuesStreaming && (
+                    <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Streaming confirmed findings…
+                      </Typography>
+                    </Paper>
+                  )}
+                  {!issueCount && !reviewActive && !reviewComplete && (
                     <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
                       <Typography variant="body2" color="text.secondary">
                         Evidence-backed issues will stream here after analysis
+                      </Typography>
+                    </Paper>
+                  )}
+                  {reviewComplete && !issueCount && !issuesStreaming && (
+                    <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        No confirmed issues found — your code passed validation.
                       </Typography>
                     </Paper>
                   )}

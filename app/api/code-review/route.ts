@@ -79,7 +79,7 @@ export async function POST(request: Request) {
                 writer.write({ type: 'data-phase', data: event.data });
                 break;
               case 'issue':
-                writer.write({ type: 'data-issue', data: event.data });
+                writer.write({ type: 'data-issue', id: randomUUID(), data: event.data });
                 break;
               case 'issue_partial':
                 writer.write({

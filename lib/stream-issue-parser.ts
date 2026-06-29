@@ -31,7 +31,7 @@ function normalizeSeverity(value: unknown): IssueSeverity {
   return 'medium';
 }
 
-function normalizeIssue(parsed: Record<string, unknown>): ReviewIssue | null {
+export function normalizeIssue(parsed: Record<string, unknown>): ReviewIssue | null {
   const explanation =
     readString(parsed.explanation) || readString(parsed.message);
   const title = readString(parsed.title) || explanation.slice(0, 80);

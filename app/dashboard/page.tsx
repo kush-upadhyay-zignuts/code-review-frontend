@@ -8,6 +8,7 @@ import Container from '@mui/material/Container';
 import Grid from '@mui/material/Grid';
 import LinearProgress from '@mui/material/LinearProgress';
 import Paper from '@mui/material/Paper';
+import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
 import { AppShell } from '@/components/app-shell';
 import { apiFetch } from '@/lib/api';
@@ -17,9 +18,12 @@ import type { DashboardStats } from '@/lib/types';
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    void apiFetch<DashboardStats>('/dashboard/stats').then(setStats);
+    void apiFetch<DashboardStats>('/dashboard/stats')
+      .then(setStats)
+      .finally(() => setLoading(false));
   }, []);
 
   const cards = [
@@ -59,15 +63,26 @@ export default function DashboardPage() {
                 <Typography variant="body2" color="text.secondary">
                   {card.label}
                 </Typography>
-                <Typography variant="h4" sx={{ mt: 1, textTransform: 'capitalize' }}>
-                  {card.value}
-                </Typography>
+                {loading ? (
+                  <Skeleton variant="text" width="60%" height={48} sx={{ mt: 1 }} />
+                ) : (
+                  <Typography variant="h4" sx={{ mt: 1, textTransform: 'capitalize' }}>
+                    {card.value}
+                  </Typography>
+                )}
               </Paper>
             </Grid>
           ))}
         </Grid>
 
-        {stats && (
+        {loading ? (
+          <Paper elevation={0} sx={{ p: 3 }}>
+            <Skeleton variant="text" width="40%" height={32} />
+            <Skeleton variant="text" width="55%" height={20} sx={{ mt: 1 }} />
+            <Skeleton variant="rounded" height={10} sx={{ mt: 3, borderRadius: 1 }} />
+            <Skeleton variant="text" width="30%" height={20} sx={{ mt: 2 }} />
+          </Paper>
+        ) : stats ? (
           <Paper elevation={0} sx={{ p: 3 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
               <Box>
@@ -93,7 +108,7 @@ export default function DashboardPage() {
               {stats.monthlyRemaining.toLocaleString()} tokens remaining
             </Typography>
           </Paper>
-        )}
+        ) : null}
       </Container>
     </AppShell>
   );

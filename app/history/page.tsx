@@ -9,19 +9,36 @@ import Container from '@mui/material/Container';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import { AppShell } from '@/components/app-shell';
+import { DeleteReviewDialog } from '@/components/delete-review-dialog';
 import { apiFetch } from '@/lib/api';
+import { toast } from '@/lib/toast';
 import type { ReviewHistoryItem } from '@/lib/types';
 
 export default function HistoryPage() {
   const [reviews, setReviews] = useState<ReviewHistoryItem[]>([]);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     void apiFetch<ReviewHistoryItem[]>('/reviews').then(setReviews);
   }, []);
 
-  const remove = async (id: string) => {
-    await apiFetch(`/reviews/${id}`, { method: 'DELETE' });
-    setReviews((current) => current.filter((r) => r._id !== id));
+  const confirmDelete = async () => {
+    if (!deleteTargetId) return;
+
+    setDeleting(true);
+    try {
+      await apiFetch(`/reviews/${deleteTargetId}`, { method: 'DELETE' });
+      setReviews((current) => current.filter((r) => r._id !== deleteTargetId));
+      setDeleteTargetId(null);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to delete review',
+        'delete-review-error',
+      );
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -53,7 +70,12 @@ export default function HistoryPage() {
                   <Button component={Link} href={`/history/${review._id}`} variant="outlined" size="small">
                     View
                   </Button>
-                  <Button variant="outlined" color="error" size="small" onClick={() => void remove(review._id)}>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    size="small"
+                    onClick={() => setDeleteTargetId(review._id)}
+                  >
                     Delete
                   </Button>
                 </Box>
@@ -72,6 +94,13 @@ export default function HistoryPage() {
           )}
         </Box>
       </Container>
+
+      <DeleteReviewDialog
+        open={deleteTargetId !== null}
+        deleting={deleting}
+        onClose={() => setDeleteTargetId(null)}
+        onConfirm={() => void confirmDelete()}
+      />
     </AppShell>
   );
 }
