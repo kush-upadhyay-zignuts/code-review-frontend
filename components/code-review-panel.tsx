@@ -10,6 +10,7 @@ import Paper from '@mui/material/Paper';
 import { AppShell } from '@/components/app-shell';
 import { MonacoCodeEditor } from '@/components/monaco-code-editor';
 import { StreamingIssueCard } from '@/components/streaming-issue-card';
+import { openReviewStream } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { issueKey, normalizeIssue } from '@/lib/stream-issue-parser';
 import { parseSseChunk, type ParsedSseEvent } from '@/lib/sse-parser';
@@ -277,26 +278,16 @@ export function CodeReviewPanel() {
     setPhases(initialPhases());
 
     try {
-      const response = await fetch('/api/code-review', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ code }),
+      const response = await openReviewStream(code, {
         signal: controller.signal,
       });
 
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || `Review failed (${response.status})`);
-      }
-
-      if (!response.body) {
+      const body = response.body;
+      if (!body) {
         throw new Error('Review stream returned no data.');
       }
 
-      const reader = response.body.getReader();
+      const reader = body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
 

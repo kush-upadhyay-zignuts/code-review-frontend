@@ -1,3 +1,8 @@
+/**
+ * Legacy BFF proxy for local dev only.
+ * Production must stream from the browser to the backend (see openReviewStream):
+ * Netlify/Vercel serverless functions time out (~10–26s) before a review finishes (~60–90s).
+ */
 interface ReviewBody {
   code?: string;
   language?: string;
