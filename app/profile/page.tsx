@@ -14,6 +14,7 @@ import Avatar from '@mui/material/Avatar';
 import { AppShell } from '@/components/app-shell';
 import { ChangePasswordForm } from '@/components/profile/change-password-form';
 import { apiFetch } from '@/lib/api';
+import { formatReviewLanguage } from '@/lib/language-utils';
 import { toast } from '@/lib/toast';
 import { useAuthStore } from '@/lib/auth-store';
 import type { DashboardStats, UserAccountDetails } from '@/lib/types';
@@ -261,8 +262,15 @@ export default function ProfilePage() {
                   <DetailRow
                     label="Most reviewed language"
                     value={
-                      stats?.topLanguages[0]
-                        ? `${stats.topLanguages[0].language} (${stats.topLanguages[0].count} reviews)`
+                      stats?.topLanguages?.length
+                        ? (() => {
+                            const top = stats.topLanguages.find(
+                              (item) => formatReviewLanguage(item.language) !== '—',
+                            );
+                            return top
+                              ? `${formatReviewLanguage(top.language)} (${top.count} reviews)`
+                              : '—';
+                          })()
                         : '—'
                     }
                   />

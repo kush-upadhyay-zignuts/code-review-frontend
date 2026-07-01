@@ -14,7 +14,8 @@ import { MonacoCodeEditor } from '@/components/monaco-code-editor';
 import { IssueCard, ReviewSummaryCard } from '@/components/review-ui';
 import { SplitReviewLayout } from '@/components/split-review-layout';
 import { apiFetch } from '@/lib/api';
-import type { ReviewHistoryItem, SupportedLanguage } from '@/lib/types';
+import { formatReviewLanguage, getMonacoLanguage } from '@/lib/language-utils';
+import type { ReviewHistoryItem } from '@/lib/types';
 
 export default function HistoryDetailPage() {
   const params = useParams<{ id: string }>();
@@ -126,8 +127,8 @@ export default function HistoryDetailPage() {
             <Link href="/history" style={{ color: '#60a5fa', fontSize: 14 }}>
               ← Back to history
             </Link>
-            <Typography variant="h4" sx={{ mt: 1, textTransform: 'capitalize' }}>
-              {review.language} review
+            <Typography variant="h4" sx={{ mt: 1 }}>
+              {formatReviewLanguage(review.language)} review
             </Typography>
             <Typography variant="body2" color="text.secondary">
               {new Date(review.createdAt).toLocaleString()} · {review.totalTokens} tokens
@@ -142,7 +143,7 @@ export default function HistoryDetailPage() {
             <Paper elevation={0} sx={{ flex: 1, overflow: 'hidden', p: 0.5, minHeight: 0 }}>
               <MonacoCodeEditor
                 value={review.code ?? ''}
-                language={review.language as SupportedLanguage}
+                language={getMonacoLanguage(review.language)}
                 onChange={() => undefined}
                 readOnly
               />

@@ -13,6 +13,7 @@ import Typography from '@mui/material/Typography';
 import { AppShell } from '@/components/app-shell';
 import { DeleteReviewDialog } from '@/components/delete-review-dialog';
 import { apiFetch } from '@/lib/api';
+import { formatReviewLanguage } from '@/lib/language-utils';
 import { toast } from '@/lib/toast';
 import type { PaginatedReviewHistory, ReviewHistoryItem } from '@/lib/types';
 
@@ -134,7 +135,7 @@ export default function HistoryPage() {
                   <Box>
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                       <Chip
-                        label={review.language}
+                        label={formatReviewLanguage(review.language)}
                         size="small"
                         color="primary"
                         variant="outlined"

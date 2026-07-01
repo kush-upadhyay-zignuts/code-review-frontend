@@ -97,6 +97,12 @@ export const SUPPORTED_LANGUAGES = [
   'ruby',
   'kotlin',
   'swift',
+  'node',
+  'next',
+  'express',
+  'react',
+  'jsx',
+  'tsx',
   'other',
 ] as const;
 

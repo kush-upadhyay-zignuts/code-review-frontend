@@ -12,6 +12,7 @@ import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
 import { AppShell } from '@/components/app-shell';
 import { apiFetch } from '@/lib/api';
+import { pickTopLanguage } from '@/lib/language-utils';
 import { useAuthStore } from '@/lib/auth-store';
 import type { DashboardStats } from '@/lib/types';
 
@@ -30,7 +31,7 @@ export default function DashboardPage() {
     { label: 'Total Reviews', value: stats?.totalReviews ?? '—' },
     { label: 'Tokens Used', value: stats?.monthlyUsed?.toLocaleString() ?? '—' },
     { label: 'Average Score', value: stats ? `${stats.averageScore}/10` : '—' },
-    { label: 'Top Language', value: stats?.topLanguages[0]?.language ?? '—' },
+    { label: 'Top Language', value: pickTopLanguage(stats?.topLanguages) },
   ];
 
   const greeting = user?.firstName ? `Hey ${user.firstName}` : 'Welcome';

@@ -1,8 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport } from 'ai';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
@@ -14,6 +12,7 @@ import { MonacoCodeEditor } from '@/components/monaco-code-editor';
 import { StreamingIssueCard } from '@/components/streaming-issue-card';
 import { useAuthStore } from '@/lib/auth-store';
 import { issueKey, normalizeIssue } from '@/lib/stream-issue-parser';
+import { parseSseChunk, type ParsedSseEvent } from '@/lib/sse-parser';
 import type {
   ReviewIssue,
   ReviewMetrics,
@@ -53,7 +52,7 @@ export function CodeReviewPanel() {
   const [metrics, setMetrics] = useState<ReviewMetrics | null>(null);
   const [tokens, setTokens] = useState<TokenUsage | null>(null);
   const [phases, setPhases] = useState(initialPhases);
-  const [submitting, setSubmitting] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [validating, setValidating] = useState(false);
   const [issuesStreaming, setIssuesStreaming] = useState(false);
   const [reviewActive, setReviewActive] = useState(false);
@@ -67,6 +66,7 @@ export function CodeReviewPanel() {
   const completeResolverRef = useRef<(() => void) | null>(null);
   const seenIssueKeysRef = useRef<Set<string>>(new Set());
   const streamEndedRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   const resetIssuePipeline = useCallback(() => {
     completeResolverRef.current?.();
@@ -112,7 +112,7 @@ export function CodeReviewPanel() {
 
     setReviewActive(false);
     setReviewComplete(true);
-    setSubmitting(false);
+    setIsStreaming(false);
     setValidating(false);
     tryFlushPendingResults();
   }, [tryFlushPendingResults]);
@@ -153,7 +153,7 @@ export function CodeReviewPanel() {
       setLiveIssue(null);
       liveIssueRef.current = null;
       scrollIssues();
-      await new Promise((r) => setTimeout(r, 280));
+      await new Promise((r) => setTimeout(r, 200));
     }
 
     processingRef.current = false;
@@ -178,74 +178,78 @@ export function CodeReviewPanel() {
     completeResolverRef.current = null;
   }, []);
 
-  const transport = useMemo(
-    () => new DefaultChatTransport({ api: '/api/code-review' }),
-    [],
+  const handleStreamEvent = useCallback(
+    (event: ParsedSseEvent) => {
+      switch (event.event) {
+        case 'phase': {
+          const { phase, status: phaseStatus } = event.data as {
+            phase: ReviewPhase;
+            status: string;
+          };
+          if (phase === 'validating_findings' && phaseStatus === 'started') {
+            setValidating(true);
+          }
+          if (phase === 'validating_findings' && phaseStatus === 'complete') {
+            setValidating(false);
+          }
+          setPhases((current) => ({
+            ...current,
+            [phase]:
+              phaseStatus === 'complete'
+                ? 'done'
+                : phaseStatus === 'started'
+                  ? 'active'
+                  : current[phase],
+          }));
+          break;
+        }
+        case 'issue': {
+          const issue = normalizeIssue(event.data);
+          if (issue) enqueueIssue(issue);
+          break;
+        }
+        case 'summary':
+          pendingSummaryRef.current = event.data as unknown as ReviewSummary;
+          tryFlushPendingResults();
+          break;
+        case 'metrics':
+          pendingMetricsRef.current = event.data as unknown as ReviewMetrics;
+          tryFlushPendingResults();
+          break;
+        case 'token':
+          setTokens(event.data as unknown as TokenUsage);
+          break;
+        case 'error':
+          toast.error(String(event.data.message ?? 'Review failed'), 'review-error');
+          break;
+        default:
+          break;
+      }
+    },
+    [enqueueIssue, tryFlushPendingResults],
   );
 
-  const { sendMessage, status, error, stop } = useChat({
-    transport,
-    onFinish: () => {
-      streamEndedRef.current = true;
-      tryFinalizeReviewRef.current();
-    },
-    onData: (dataPart) => {
-      if (dataPart.type === 'data-phase') {
-        const { phase, status: phaseStatus } = dataPart.data as {
-          phase: ReviewPhase;
-          status: string;
-        };
-        if (phase === 'validating_findings' && phaseStatus === 'started') {
-          setValidating(true);
-          setRevealedIssues([]);
-          resetIssuePipeline();
-        }
-        if (phase === 'validating_findings' && phaseStatus === 'complete') {
-          setValidating(false);
-        }
-        setPhases((current) => ({
-          ...current,
-          [phase]:
-            phaseStatus === 'complete'
-              ? 'done'
-              : phaseStatus === 'started'
-                ? 'active'
-                : current[phase],
-        }));
-      }
-      if (dataPart.type === 'data-issue') {
-        const issue = normalizeIssue(dataPart.data as Record<string, unknown>);
-        if (issue) enqueueIssue(issue);
-      }
-      if (dataPart.type === 'data-summary') {
-        pendingSummaryRef.current = dataPart.data as ReviewSummary;
-        tryFlushPendingResults();
-      }
-      if (dataPart.type === 'data-metrics') {
-        pendingMetricsRef.current = dataPart.data as ReviewMetrics;
-        tryFlushPendingResults();
-      }
-      if (dataPart.type === 'data-token') {
-        setTokens(dataPart.data as TokenUsage);
-      }
-    },
-  });
+  const handleStop = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    streamEndedRef.current = true;
+    setIsStreaming(false);
+    setValidating(false);
+    setReviewActive(false);
+  }, []);
 
-  useEffect(() => {
-    if (error?.message) {
-      toast.error(error.message, 'review-error');
-    }
-  }, [error]);
-
-  const isApiStreaming = status === 'streaming' || status === 'submitted' || submitting;
   const isReviewInProgress =
-    reviewActive || isApiStreaming || issuesStreaming || validating || liveIssue !== null;
+    reviewActive || isStreaming || issuesStreaming || validating || liveIssue !== null;
   const issueCount = revealedIssues.length + (liveIssue ? 1 : 0);
 
   const handleSubmit = useCallback(async () => {
-    if (!code.trim() || isReviewInProgress || !token) return;
+    if (!code.trim() || !token) return;
 
-    setSubmitting(true);
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setIsStreaming(true);
     setReviewActive(true);
     setReviewComplete(false);
     streamEndedRef.current = false;
@@ -260,22 +264,70 @@ export function CodeReviewPanel() {
     setPhases(initialPhases());
 
     try {
-      await sendMessage(
-        { text: 'Review code' },
-        {
-          body: { code },
-          headers: { Authorization: `Bearer ${token}` },
+      const response = await fetch('/api/code-review', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
+        body: JSON.stringify({ code }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || `Review failed (${response.status})`);
+      }
+
+      if (!response.body) {
+        throw new Error('Review stream returned no data.');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const { events, remainder } = parseSseChunk(buffer);
+        buffer = remainder;
+
+        for (const streamEvent of events) {
+          handleStreamEvent(streamEvent);
+        }
+      }
+
+      if (buffer.trim()) {
+        const { events } = parseSseChunk(`${buffer}\n\n`);
+        for (const streamEvent of events) {
+          handleStreamEvent(streamEvent);
+        }
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        return;
+      }
+      toast.error(
+        error instanceof Error ? error.message : 'Review failed',
+        'review-error',
       );
-    } catch {
       setReviewActive(false);
-      setSubmitting(false);
-      setValidating(false);
     } finally {
+      abortRef.current = null;
       streamEndedRef.current = true;
+      setIsStreaming(false);
       tryFinalizeReviewRef.current();
     }
-  }, [code, isReviewInProgress, resetIssuePipeline, sendMessage, token]);
+  }, [code, handleStreamEvent, resetIssuePipeline, token]);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   return (
     <AppShell>
@@ -323,8 +375,8 @@ export function CodeReviewPanel() {
                 >
                   {isReviewInProgress ? 'Analyzing…' : 'Review Code'}
                 </Button>
-                {isApiStreaming && (
-                  <Button variant="outlined" onClick={() => stop()}>
+                {isStreaming && (
+                  <Button variant="outlined" onClick={handleStop}>
                     Stop
                   </Button>
                 )}
@@ -333,7 +385,7 @@ export function CodeReviewPanel() {
           }
           right={
             <>
-              {isApiStreaming && <PhaseProgress phases={phases} />}
+              {isStreaming && <PhaseProgress phases={phases} />}
               <TokenUsageBar usage={tokens} />
               <Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
@@ -362,14 +414,14 @@ export function CodeReviewPanel() {
                       </Typography>
                     </Paper>
                   )}
-                  {!issueCount && !validating && isApiStreaming && (
+                  {!issueCount && !validating && isStreaming && (
                     <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
                       <Typography variant="body2" color="text.secondary">
                         Scanning code — confirmed issues will stream in shortly
                       </Typography>
                     </Paper>
                   )}
-                  {!issueCount && !validating && !isApiStreaming && issuesStreaming && (
+                  {!issueCount && !validating && !isStreaming && issuesStreaming && (
                     <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
                       <Typography variant="body2" color="text.secondary">
                         Streaming confirmed findings…
