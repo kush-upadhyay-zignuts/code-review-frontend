@@ -23,6 +23,7 @@ export interface ReviewMetrics {
 export interface ReviewSummary {
   overallScore: number;
   summary: string;
+  language?: string;
   metrics?: ReviewMetrics;
 }
 

@@ -22,6 +22,7 @@ import type {
 } from '@/lib/types';
 import { SplitReviewLayout } from '@/components/split-review-layout';
 import { toast } from '@/lib/toast';
+import { formatReviewLanguage } from '@/lib/language-utils';
 import {
   IssueCard,
   PhaseProgress,
@@ -57,6 +58,8 @@ export function CodeReviewPanel() {
   const [issuesStreaming, setIssuesStreaming] = useState(false);
   const [reviewActive, setReviewActive] = useState(false);
   const [reviewComplete, setReviewComplete] = useState(false);
+  const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null);
+  const [streamError, setStreamError] = useState<string | null>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const issueQueueRef = useRef<ReviewIssue[]>([]);
   const processingRef = useRef(false);
@@ -208,10 +211,15 @@ export function CodeReviewPanel() {
           if (issue) enqueueIssue(issue);
           break;
         }
-        case 'summary':
-          pendingSummaryRef.current = event.data as unknown as ReviewSummary;
+        case 'summary': {
+          const summaryData = event.data as unknown as ReviewSummary;
+          pendingSummaryRef.current = summaryData;
+          if (summaryData.language) {
+            setDetectedLanguage(formatReviewLanguage(summaryData.language));
+          }
           tryFlushPendingResults();
           break;
+        }
         case 'metrics':
           pendingMetricsRef.current = event.data as unknown as ReviewMetrics;
           tryFlushPendingResults();
@@ -219,9 +227,12 @@ export function CodeReviewPanel() {
         case 'token':
           setTokens(event.data as unknown as TokenUsage);
           break;
-        case 'error':
-          toast.error(String(event.data.message ?? 'Review failed'), 'review-error');
+        case 'error': {
+          const message = String(event.data.message ?? 'Review failed');
+          setStreamError(message);
+          toast.error(message, 'review-error');
           break;
+        }
         default:
           break;
       }
@@ -252,6 +263,8 @@ export function CodeReviewPanel() {
     setIsStreaming(true);
     setReviewActive(true);
     setReviewComplete(false);
+    setDetectedLanguage(null);
+    setStreamError(null);
     streamEndedRef.current = false;
     setRevealedIssues([]);
     resetIssuePipeline();
@@ -388,10 +401,13 @@ export function CodeReviewPanel() {
               {isStreaming && <PhaseProgress phases={phases} />}
               <TokenUsageBar usage={tokens} />
               <Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                     Confirmed issues ({issueCount})
                   </Typography>
+                  {detectedLanguage && detectedLanguage !== '—' && (
+                    <Chip label={detectedLanguage} size="small" color="secondary" variant="outlined" />
+                  )}
                   {issuesStreaming && (
                     <Chip label="Live" size="small" color="primary" variant="outlined" />
                   )}
@@ -435,10 +451,19 @@ export function CodeReviewPanel() {
                       </Typography>
                     </Paper>
                   )}
-                  {reviewComplete && !issueCount && !issuesStreaming && (
+                  {reviewComplete && !issueCount && !issuesStreaming && streamError && (
+                    <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
+                      <Typography variant="body2" color="error.main">
+                        {streamError}
+                      </Typography>
+                    </Paper>
+                  )}
+                  {reviewComplete && !issueCount && !issuesStreaming && !streamError && (
                     <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
                       <Typography variant="body2" color="text.secondary">
-                        No confirmed issues found — your code passed validation.
+                        {(tokens?.outputTokens ?? 0) >= 10_000
+                          ? 'The AI response was likely cut off before findings could be returned. Try again or paste a shorter snippet.'
+                          : 'No confirmed issues found — your code passed validation.'}
                       </Typography>
                     </Paper>
                   )}
