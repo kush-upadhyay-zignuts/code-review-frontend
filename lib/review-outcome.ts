@@ -1,9 +1,11 @@
 import type { ReviewSummary, TokenUsage } from '@/lib/types';
+import { indicatesNonCodeInput } from '@/lib/non-code-detection';
 
 export type ReviewOutcome =
   | 'incomplete'
   | 'error'
   | 'truncated'
+  | 'not_code'
   | 'clean';
 
 export function resolveReviewOutcome(input: {
@@ -12,8 +14,10 @@ export function resolveReviewOutcome(input: {
   tokens: TokenUsage | null;
   summary: ReviewSummary | null;
   issueCount: number;
+  language?: string | null;
 }): ReviewOutcome | null {
-  const { streamCompleted, streamError, tokens, summary, issueCount } = input;
+  const { streamCompleted, streamError, tokens, summary, issueCount, language } =
+    input;
 
   if (streamError) {
     return 'error';
@@ -24,6 +28,16 @@ export function resolveReviewOutcome(input: {
 
   if (!succeeded) {
     return 'incomplete';
+  }
+
+  if (
+    issueCount === 0 &&
+    indicatesNonCodeInput({
+      language: language ?? summary?.language,
+      summary: summary?.summary,
+    })
+  ) {
+    return 'not_code';
   }
 
   if (

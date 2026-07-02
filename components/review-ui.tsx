@@ -445,6 +445,38 @@ export function ReviewSummaryCard({
   );
 }
 
+export function NotCodeBanner({ language }: { language?: string | null }) {
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        p: 3,
+        textAlign: 'center',
+        borderStyle: 'solid',
+        borderColor: 'warning.main',
+        borderWidth: 1,
+        bgcolor: 'rgba(251,191,36,0.08)',
+      }}
+    >
+      <Typography
+        variant="subtitle1"
+        sx={{ fontWeight: 700, color: 'warning.light', mb: 1 }}
+      >
+        This does not look like source code
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: language ? 1.5 : 0 }}>
+        Paste a valid code snippet to review — plain text and documents are not
+        supported.
+      </Typography>
+      {language && language !== '—' && (
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Chip label={language} size="small" color="warning" variant="outlined" />
+        </Box>
+      )}
+    </Paper>
+  );
+}
+
 export function CleanReviewBanner({
   summary,
   language,

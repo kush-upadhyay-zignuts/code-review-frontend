@@ -26,11 +26,13 @@ import type {
 import { SplitReviewLayout } from '@/components/split-review-layout';
 import { toast } from '@/lib/toast';
 import { formatReviewLanguage } from '@/lib/language-utils';
+import { NON_CODE_INPUT_MESSAGE } from '@/lib/non-code-detection';
 import {
   IssueCard,
   PhaseProgress,
   ReviewSummaryCard,
   CleanReviewBanner,
+  NotCodeBanner,
   TokenUsageBar,
 } from '@/components/review-ui';
 import {
@@ -289,6 +291,9 @@ export function CodeReviewPanel() {
           const message = String(event.data.message ?? 'Review failed');
           streamErrorRef.current = message;
           setStreamError(message);
+          if (message === NON_CODE_INPUT_MESSAGE) {
+            setCodeError(message);
+          }
           toast.error(message, 'review-error');
           break;
         }
@@ -456,6 +461,7 @@ export function CodeReviewPanel() {
           tokens,
           summary,
           issueCount,
+          language: detectedLanguage,
         })
       : null;
 
@@ -594,6 +600,9 @@ export function CodeReviewPanel() {
                         The AI response was likely cut off before findings could be returned. Try again or paste a shorter snippet.
                       </Typography>
                     </Paper>
+                  )}
+                  {reviewOutcome === 'not_code' && !issueCount && (
+                    <NotCodeBanner language={detectedLanguage} />
                   )}
                   {reviewOutcome === 'clean' && !issueCount && (
                     <CleanReviewBanner
