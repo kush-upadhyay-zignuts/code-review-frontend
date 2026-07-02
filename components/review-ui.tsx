@@ -444,3 +444,47 @@ export function ReviewSummaryCard({
     </Paper>
   );
 }
+
+export function CleanReviewBanner({
+  summary,
+  language,
+}: {
+  summary?: ReviewSummary | null;
+  language?: string | null;
+}) {
+  const score = summary?.overallScore;
+  const scoreLabel =
+    typeof score === 'number' && score > 0 ? `Score ${score}/10` : null;
+
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        p: 3,
+        textAlign: 'center',
+        borderStyle: 'solid',
+        borderColor: 'success.main',
+        borderWidth: 1,
+        bgcolor: 'rgba(52,211,153,0.08)',
+      }}
+    >
+      <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'success.light', mb: 1 }}>
+        Your code looks great!
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: scoreLabel || language ? 1.5 : 0 }}>
+        No confirmed issues were found. Your snippet passed security, quality, and
+        maintainability checks.
+      </Typography>
+      {(scoreLabel || language) && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1, flexWrap: 'wrap' }}>
+          {scoreLabel && (
+            <Chip label={scoreLabel} size="small" color="success" variant="outlined" />
+          )}
+          {language && language !== '—' && (
+            <Chip label={language} size="small" color="secondary" variant="outlined" />
+          )}
+        </Box>
+      )}
+    </Paper>
+  );
+}

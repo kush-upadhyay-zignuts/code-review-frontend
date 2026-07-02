@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
+import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
@@ -10,7 +11,8 @@ import Paper from '@mui/material/Paper';
 import { AppShell } from '@/components/app-shell';
 import { MonacoCodeEditor } from '@/components/monaco-code-editor';
 import { StreamingIssueCard } from '@/components/streaming-issue-card';
-import { openReviewStream } from '@/lib/api';
+import { ApiError, openReviewStream } from '@/lib/api';
+import { validateCodeInput } from '@/lib/code-input-validator';
 import { useAuthStore } from '@/lib/auth-store';
 import { issueKey, normalizeIssue } from '@/lib/stream-issue-parser';
 import { parseSseChunk, type ParsedSseEvent } from '@/lib/sse-parser';
@@ -28,8 +30,14 @@ import {
   IssueCard,
   PhaseProgress,
   ReviewSummaryCard,
+  CleanReviewBanner,
   TokenUsageBar,
 } from '@/components/review-ui';
+import {
+  INCOMPLETE_REVIEW_MESSAGE,
+  resolveReviewOutcome,
+  STREAM_STALL_MS,
+} from '@/lib/review-outcome';
 
 const DEFAULT_CODE = `function divide(a, b) {
   return a / b;
@@ -61,6 +69,9 @@ export function CodeReviewPanel() {
   const [reviewComplete, setReviewComplete] = useState(false);
   const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [streamCompleted, setStreamCompleted] = useState(false);
+  const [partialNotice, setPartialNotice] = useState<string | null>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const issueQueueRef = useRef<ReviewIssue[]>([]);
   const processingRef = useRef(false);
@@ -70,7 +81,40 @@ export function CodeReviewPanel() {
   const completeResolverRef = useRef<(() => void) | null>(null);
   const seenIssueKeysRef = useRef<Set<string>>(new Set());
   const streamEndedRef = useRef(false);
+  const streamCompletedRef = useRef(false);
+  const streamErrorRef = useRef<string | null>(null);
+  const tokensRef = useRef<TokenUsage | null>(null);
+  const summaryRef = useRef<ReviewSummary | null>(null);
+  const abortDueToStallRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearStallTimer = useCallback(() => {
+    if (stallTimerRef.current) {
+      clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+  }, []);
+
+  const resetStreamTracking = useCallback(() => {
+    streamCompletedRef.current = false;
+    setStreamCompleted(false);
+    streamErrorRef.current = null;
+    tokensRef.current = null;
+    summaryRef.current = null;
+    abortDueToStallRef.current = false;
+    clearStallTimer();
+  }, [clearStallTimer]);
+
+  const scheduleStallWatch = useCallback((controller: AbortController) => {
+    clearStallTimer();
+    stallTimerRef.current = setTimeout(() => {
+      abortDueToStallRef.current = true;
+      streamErrorRef.current = INCOMPLETE_REVIEW_MESSAGE;
+      setStreamError(INCOMPLETE_REVIEW_MESSAGE);
+      controller.abort();
+    }, STREAM_STALL_MS);
+  }, [clearStallTimer]);
 
   const resetIssuePipeline = useCallback(() => {
     completeResolverRef.current?.();
@@ -215,6 +259,7 @@ export function CodeReviewPanel() {
         case 'summary': {
           const summaryData = event.data as unknown as ReviewSummary;
           pendingSummaryRef.current = summaryData;
+          summaryRef.current = summaryData;
           if (summaryData.language) {
             setDetectedLanguage(formatReviewLanguage(summaryData.language));
           }
@@ -225,11 +270,24 @@ export function CodeReviewPanel() {
           pendingMetricsRef.current = event.data as unknown as ReviewMetrics;
           tryFlushPendingResults();
           break;
-        case 'token':
-          setTokens(event.data as unknown as TokenUsage);
+        case 'token': {
+          const tokenData = event.data as unknown as TokenUsage;
+          tokensRef.current = tokenData;
+          setTokens(tokenData);
+          break;
+        }
+        case 'done':
+          streamCompletedRef.current = true;
+          setStreamCompleted(true);
+          break;
+        case 'ping':
+          break;
+        case 'notice':
+          setPartialNotice(String(event.data.message ?? ''));
           break;
         case 'error': {
           const message = String(event.data.message ?? 'Review failed');
+          streamErrorRef.current = message;
           setStreamError(message);
           toast.error(message, 'review-error');
           break;
@@ -254,18 +312,33 @@ export function CodeReviewPanel() {
     reviewActive || isStreaming || issuesStreaming || validating || liveIssue !== null;
   const issueCount = revealedIssues.length + (liveIssue ? 1 : 0);
 
+  const handleCodeChange = useCallback((value: string) => {
+    setCode(value);
+    setCodeError(null);
+  }, []);
+
   const handleSubmit = useCallback(async () => {
     if (!code.trim() || !token) return;
 
+    const validation = validateCodeInput(code);
+    if (!validation.valid) {
+      setCodeError(validation.error ?? 'Invalid code input.');
+      toast.error(validation.error ?? 'Invalid code input.', 'code-validation-error');
+      return;
+    }
+
+    setCodeError(null);
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    resetStreamTracking();
 
     setIsStreaming(true);
     setReviewActive(true);
     setReviewComplete(false);
     setDetectedLanguage(null);
     setStreamError(null);
+    setPartialNotice(null);
     streamEndedRef.current = false;
     setRevealedIssues([]);
     resetIssuePipeline();
@@ -276,6 +349,7 @@ export function CodeReviewPanel() {
     setTokens(null);
     setValidating(false);
     setPhases(initialPhases());
+    scheduleStallWatch(controller);
 
     try {
       const response = await openReviewStream(code, {
@@ -291,15 +365,21 @@ export function CodeReviewPanel() {
       const decoder = new TextDecoder();
       let buffer = '';
 
+      const onStreamActivity = () => {
+        scheduleStallWatch(controller);
+      };
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
+        onStreamActivity();
         buffer += decoder.decode(value, { stream: true });
         const { events, remainder } = parseSseChunk(buffer);
         buffer = remainder;
 
         for (const streamEvent of events) {
+          onStreamActivity();
           handleStreamEvent(streamEvent);
         }
       }
@@ -307,31 +387,77 @@ export function CodeReviewPanel() {
       if (buffer.trim()) {
         const { events } = parseSseChunk(`${buffer}\n\n`);
         for (const streamEvent of events) {
+          onStreamActivity();
           handleStreamEvent(streamEvent);
         }
       }
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
+        if (abortDueToStallRef.current) {
+          toast.error(INCOMPLETE_REVIEW_MESSAGE, 'review-stall-error');
+        }
         return;
       }
-      toast.error(
-        error instanceof Error ? error.message : 'Review failed',
-        'review-error',
-      );
+
+      const message =
+        error instanceof Error ? error.message : 'Review failed';
+
+      streamErrorRef.current = message;
+      if (error instanceof ApiError && error.status === 400) {
+        setCodeError(message);
+      } else {
+        setStreamError(message);
+      }
+
+      toast.error(message, 'review-error');
       setReviewActive(false);
     } finally {
+      clearStallTimer();
       abortRef.current = null;
       streamEndedRef.current = true;
       setIsStreaming(false);
+
+      if (
+        !streamCompletedRef.current &&
+        !streamErrorRef.current &&
+        (tokensRef.current?.used ?? 0) === 0 &&
+        !summaryRef.current
+      ) {
+        streamErrorRef.current = INCOMPLETE_REVIEW_MESSAGE;
+        setStreamError(INCOMPLETE_REVIEW_MESSAGE);
+        toast.error(INCOMPLETE_REVIEW_MESSAGE, 'review-incomplete-error');
+        setReviewActive(false);
+      }
+
       tryFinalizeReviewRef.current();
     }
-  }, [code, handleStreamEvent, resetIssuePipeline, token]);
+  }, [
+    code,
+    clearStallTimer,
+    handleStreamEvent,
+    resetIssuePipeline,
+    resetStreamTracking,
+    scheduleStallWatch,
+    token,
+  ]);
 
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
+      clearStallTimer();
     };
-  }, []);
+  }, [clearStallTimer]);
+
+  const reviewOutcome =
+    reviewComplete && !issuesStreaming
+      ? resolveReviewOutcome({
+          streamCompleted,
+          streamError,
+          tokens,
+          summary,
+          issueCount,
+        })
+      : null;
 
   return (
     <AppShell>
@@ -366,10 +492,15 @@ export function CodeReviewPanel() {
               <Paper elevation={0} sx={{ flex: 1, overflow: 'hidden', p: 0.5, minHeight: 0 }}>
                 <MonacoCodeEditor
                   value={code}
-                  onChange={setCode}
+                  onChange={handleCodeChange}
                   readOnly={isReviewInProgress}
                 />
               </Paper>
+              {codeError && (
+                <Alert severity="error" onClose={() => setCodeError(null)}>
+                  {codeError}
+                </Alert>
+              )}
               <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', flexShrink: 0 }}>
                 <Button
                   variant="contained"
@@ -404,6 +535,9 @@ export function CodeReviewPanel() {
                   )}
                 </Box>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  {partialNotice && (
+                    <Alert severity="info">{partialNotice}</Alert>
+                  )}
                   {revealedIssues.map((issue, i) => (
                     <IssueCard key={`${issueKey(issue)}-${i}`} issue={issue} />
                   ))}
@@ -442,21 +576,30 @@ export function CodeReviewPanel() {
                       </Typography>
                     </Paper>
                   )}
-                  {reviewComplete && !issueCount && !issuesStreaming && streamError && (
+                  {reviewOutcome === 'error' && !issueCount && (
                     <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
                       <Typography variant="body2" color="error.main">
                         {streamError}
                       </Typography>
                     </Paper>
                   )}
-                  {reviewComplete && !issueCount && !issuesStreaming && !streamError && (
+                  {reviewOutcome === 'incomplete' && !issueCount && (
+                    <Alert severity="warning">
+                      {INCOMPLETE_REVIEW_MESSAGE}
+                    </Alert>
+                  )}
+                  {reviewOutcome === 'truncated' && !issueCount && (
                     <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
                       <Typography variant="body2" color="text.secondary">
-                        {(tokens?.outputTokens ?? 0) >= 10_000
-                          ? 'The AI response was likely cut off before findings could be returned. Try again or paste a shorter snippet.'
-                          : 'No confirmed issues found — your code passed validation.'}
+                        The AI response was likely cut off before findings could be returned. Try again or paste a shorter snippet.
                       </Typography>
                     </Paper>
+                  )}
+                  {reviewOutcome === 'clean' && !issueCount && (
+                    <CleanReviewBanner
+                      summary={summary}
+                      language={detectedLanguage}
+                    />
                   )}
                 </Box>
               </Box>

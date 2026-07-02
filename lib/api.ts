@@ -1,6 +1,17 @@
 import { useAuthStore } from './auth-store';
+import { parseApiError } from './parse-api-error';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
+
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
 
 export async function apiFetch<T>(
   path: string,
@@ -19,7 +30,7 @@ export async function apiFetch<T>(
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Request failed: ${response.status}`);
+    throw new ApiError(parseApiError(text, `Request failed: ${response.status}`), response.status);
   }
 
   return response.json() as Promise<T>;
@@ -54,7 +65,10 @@ export async function openReviewStream(
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Review failed (${response.status})`);
+    throw new ApiError(
+      parseApiError(text, `Review failed (${response.status})`),
+      response.status,
+    );
   }
 
   if (!response.body) {

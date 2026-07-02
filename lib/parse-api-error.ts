@@ -1,10 +1,32 @@
-export function parseApiError(text: string, fallback: string): string {
-  try {
-    const json = JSON.parse(text) as { message?: string | string[] };
-    if (typeof json.message === 'string') return json.message;
-    if (Array.isArray(json.message)) return json.message.join(', ');
-  } catch {
-    if (text) return text;
+export function parseApiError(
+  body: string,
+  fallback = 'Request failed',
+): string {
+  const trimmed = body.trim();
+  if (!trimmed) {
+    return fallback;
   }
-  return fallback;
+
+  try {
+    const parsed = JSON.parse(trimmed) as {
+      message?: string | string[];
+      error?: string;
+    };
+
+    if (Array.isArray(parsed.message)) {
+      return parsed.message.join(', ');
+    }
+
+    if (typeof parsed.message === 'string' && parsed.message.trim()) {
+      return parsed.message;
+    }
+
+    if (typeof parsed.error === 'string' && parsed.error.trim()) {
+      return parsed.error;
+    }
+  } catch {
+    // plain-text response
+  }
+
+  return trimmed;
 }
